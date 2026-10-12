@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gosent"
+version = "0.1.0"
+description = "Gosent Send API client: first email in a few lines."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "UNLICENSED" }
+keywords = ["email", "transactional", "gosent", "send"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["gosent"]
