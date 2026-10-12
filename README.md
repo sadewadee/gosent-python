@@ -1,26 +1,17 @@
 # gosent
 
-Official Python SDK for the Gosent Send API. Send email with a few lines of code.
+Official Python SDK for the [Gosent](https://gosent.net) Send API. Send email with a few
+lines of code.
 
-Requires Python 3.9 or newer. Standard library only: no dependencies to install.
+Standard library only: no runtime dependencies. Requires Python 3.9 or newer.
 
 ## Install
 
-This package is not published to PyPI yet. Install the wheel built from the repository:
-
 ```sh
-cd sdks/python
-python -m build --wheel
-pip install dist/gosent-0.1.0-py3-none-any.whl
+pip install gosent
 ```
 
-Or install straight from the source tree:
-
-```sh
-pip install /path/to/gosent-portal/sdks/python
-```
-
-## Send your first email
+## Quick start
 
 ```python
 import os
@@ -38,13 +29,48 @@ result = client.emails.send(
 print("sent", result.email_id, result.succeeded)
 ```
 
+The sender argument is `from_`, with a trailing underscore, because `from` is a reserved
+word in Python.
+
 The API key defaults to the `GOSENT_API_KEY` environment variable when you omit it:
 
 ```python
 client = gosent.Gosent()
 ```
 
-`send` also accepts a dict, so you can pass the whole message as one object:
+## Sending email
+
+`client.emails.send(...)` accepts these keyword arguments:
+
+| Argument | Type | Notes |
+| --- | --- | --- |
+| `from_` | `str` | Required. The sender address. |
+| `to` | `str` or list of `str` | Required. A single string becomes a one-element list. |
+| `subject` | `str` | |
+| `html` | `str` | HTML body. |
+| `text` | `str` | Plain text body. |
+| `cc`, `bcc` | `str` or list of `str` | |
+| `reply_to` | `str` | Sent as a `Reply-To` header. |
+| `headers` | `dict` | Extra custom headers, for example `{"X-Campaign": "welcome"}`. |
+| `attachments` | list of `dict` | See [Attachments](#attachments). |
+
+`html` and `text` are both optional, but the API needs at least one of them.
+
+```python
+result = client.emails.send(
+    from_="hello@yourdomain.com",
+    to=["ana@example.com", "budi@example.com"],
+    cc="team@example.com",
+    reply_to="support@yourdomain.com",
+    subject="Your receipt",
+    html="<p>Thanks for your order.</p>",
+    text="Thanks for your order.",
+    headers={"X-Campaign": "receipts"},
+)
+```
+
+`send` also accepts a dict as its first argument, so you can pass the whole message as one
+object:
 
 ```python
 client.emails.send({
@@ -55,7 +81,59 @@ client.emails.send({
 })
 ```
 
+### Attachments
+
+Each attachment is a dict with:
+
+- `filename` (required);
+- `content`: a `str` (sent as its UTF-8 bytes) or `bytes`;
+- `content_type` (optional): when omitted it is guessed from the file name: `.txt` is
+  `text/plain`, `.html` is `text/html`, `.json` is `application/json`, anything else is
+  `application/octet-stream`.
+
+The SDK base64-encodes the content for you.
+
+```python
+client.emails.send(
+    from_="hello@yourdomain.com",
+    to="you@example.com",
+    subject="Monthly report",
+    text="The report is attached.",
+    attachments=[
+        {"filename": "notes.txt", "content": "Meeting at 10."},
+        {"filename": "report.csv", "content": b"id,total\n1,42\n", "content_type": "text/csv"},
+    ],
+)
+```
+
+### Custom headers
+
+Headers the API sets itself cannot be passed in `headers`: `From`, `To`, `Cc`, `Bcc`,
+`Sender`, `Return-Path`, `Received`, `DKIM-Signature`, `Message-ID`, `Date`,
+`MIME-Version`, and any header starting with `Content-` or `X-Gosent-`. Passing one raises
+`ValueError` before any request is made. Use the top-level arguments (`from_`, `to`,
+`reply_to`, ...) instead.
+
+### Wire format
+
+The SDK maps its arguments onto the Send API request body:
+
+| SDK | API |
+| --- | --- |
+| `from_` | `sender` |
+| `to`, `cc`, `bcc` | arrays of the same name |
+| `html` | `html_body` |
+| `text` | `text_body` |
+| `reply_to` | a `Reply-To` entry in `custom_headers` |
+| `headers` | `custom_headers` |
+| `attachments[].filename` | `attachments[].filename` |
+| `attachments[].content` | `attachments[].fileblob` (base64) |
+| `attachments[].content_type` | `attachments[].mimetype` |
+
 ## Send a raw MIME message
+
+`client.emails.send_mime(mime)` sends a message you built yourself. Pass the MIME message
+as a string, either raw text or base64. It is posted to `/v3/email/mime`.
 
 ```python
 mime = "\r\n".join([
@@ -69,24 +147,23 @@ mime = "\r\n".join([
 result = client.emails.send_mime(mime)
 ```
 
-## Field mapping
+An empty or non-string `mime` raises `ValueError` before any request is made.
 
-The friendly fields map onto the Send API wire format (`docs/sending-contract.md` §4):
+## The result
 
-| SDK | API |
-| --- | --- |
-| `from_` | `sender` |
-| `to`, `cc`, `bcc` | arrays of the same name (a string becomes a one-element array) |
-| `html` | `html_body` |
-| `text` | `text_body` |
-| `reply_to` | a `Reply-To` entry in `custom_headers` |
-| `headers` | `custom_headers` |
-| `attachments[].filename` | `attachments[].filename` |
-| `attachments[].content` | `attachments[].fileblob` (base64 of the UTF-8 string, or raw `bytes`) |
-| `attachments[].content_type` | `attachments[].mimetype` |
+`send` and `send_mime` return a `gosent.SendResult`:
 
-`from_` and `to` are required. `html` and `text` are both optional, but the API needs at
-least one of them.
+```python
+result.succeeded        # number of recipients accepted
+result.failed           # number of recipients refused
+result.failures         # refused addresses
+result.failure_details  # list of gosent.FailureDetail(recipient, reason, error_code)
+result.email_id         # the email_id for this send
+result.sandboxed        # True in sandbox mode, False when not, None when not reported
+```
+
+A send where some recipients are refused still returns a `SendResult`; check
+`result.failed` and `result.failure_details`.
 
 ## Handling errors
 
@@ -97,39 +174,67 @@ transport fails:
 try:
     result = client.emails.send(from_="hello@yourdomain.com", to="you@example.com", text="Hi")
 except gosent.GosentError as err:
-    print(err.status_code)   # e.g. 401
-    print(err.code)          # e.g. "API_KEY_INVALID" (the E_ApiResponseCodes. prefix is stripped)
-    print(err.message)       # human readable
-    print(err.request_id)    # the request_id from the envelope, when present
-    print(err.retry_after)   # the Retry-After header on a 429, when present
-    print(err.field_errors)  # {"sender": "..."} on a 400 validation error
+    print(err.status_code)   # HTTP status, for example 401 (0 for a network failure)
+    print(err.code)          # for example "API_KEY_INVALID"
+    print(err.message)       # human readable message
+    print(err.request_id)    # the request_id from the response, or None
+    print(err.retry_after)   # the Retry-After header as a string, or None
+    print(err.field_errors)  # for example {"sender": "..."} on a 400 validation error
 ```
 
-On success `SendResult` carries the per-recipient outcome:
-
-```python
-result.succeeded        # number accepted
-result.failed           # number refused
-result.failures         # refused addresses
-result.failure_details  # [FailureDetail(recipient, reason, error_code)]
-result.email_id         # the email_id for this send
-result.sandboxed        # True only when the API key is in sandbox mode
-```
+`err.code` is the API error code with its `E_ApiResponseCodes.` prefix removed.
 
 A transport failure (DNS, connection refused, timeout) raises `GosentError` with
-`code == "network_error"` and `status_code == 0`. A local misuse (missing `from_`, a
-forbidden custom header, a non-string MIME body) raises `ValueError` before any request.
+`code == "network_error"` and `status_code == 0`. A response that is not a valid JSON
+envelope also raises `GosentError` with `code == "network_error"`, and `status_code` set
+to the HTTP status.
 
-Common status codes: `400` bad payload, `401` missing or invalid key, `403` suspended or
-unauthorized account, `429` monthly limit reached (check `err.retry_after`), `500`
-server error.
+A local mistake (missing API key, missing `from_` or `to`, a forbidden custom header, an
+empty MIME message, a malformed attachment) raises `ValueError` before any request is
+made.
+
+Common status codes:
+
+| Status | Meaning |
+| --- | --- |
+| `400` | Invalid payload, or the sender domain is not verified (`SENDER_NOT_VERIFIED`) |
+| `401` | Missing or invalid API key |
+| `403` | Suspended or unauthorized account |
+| `429` | Monthly limit reached; check `err.retry_after` |
+| `500` | Server error |
 
 ## Sandbox and verified sender
 
-The `From` domain must be a verified sender domain on your account, otherwise the API
-answers `400` (`SENDER_NOT_VERIFIED`). While a key is in sandbox mode, `result.sandboxed`
-is `True` and the message is accepted without delivery.
+The `from_` domain must be a verified sender domain on your account, otherwise the API
+answers `400` with code `SENDER_NOT_VERIFIED`. While a key is in sandbox mode,
+`result.sandboxed` is `True` and the message is accepted without delivery.
+
+## Configuration
+
+```python
+client = gosent.Gosent(
+    api_key="...",                          # default: the GOSENT_API_KEY environment variable
+    base_url="https://api.gosent.net/v3/",  # default: GOSENT_API_BASE_URL, then this URL
+)
+```
+
+- `api_key`: your Gosent API key. When omitted, `GOSENT_API_KEY` is used. If neither is
+  set, `Gosent()` raises `ValueError`.
+- `base_url`: the Send API base URL. When omitted, `GOSENT_API_BASE_URL` is used, then
+  `https://api.gosent.net/v3/`. A missing trailing slash is added.
+
+Each request times out after 30 seconds. The timeout is not configurable in this version.
+
+## Requirements
+
+- Python 3.9 or newer.
+- No third-party packages: the SDK uses only the Python standard library.
+
+## Documentation
+
+- Gosent documentation: https://gosent.net/docs
+- SDK guide: https://gosent.net/docs/sdks
 
 ## License
 
-UNLICENSED.
+MIT. See [LICENSE](LICENSE).
