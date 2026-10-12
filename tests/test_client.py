@@ -6,14 +6,11 @@ Run: python -m pytest  (or)  python -m unittest discover -s tests
 import base64
 import json
 import os
-import sys
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import gosent  # noqa: E402
+import gosent
 
 KEY = "api-" + "P" * 40
 
