@@ -1,21 +1,41 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "gosent"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Gosent Send API client: first email in a few lines."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "UNLICENSED" }
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Gosent", email = "support@gosent.net" }]
 keywords = ["email", "transactional", "gosent", "send"]
 classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = []
 
+[project.urls]
+Homepage = "https://gosent.net/docs/sdks"
+Documentation = "https://gosent.net/docs"
+Source = "https://github.com/sadewadee/gosent-python"
+Issues = "https://github.com/sadewadee/gosent-python/issues"
+
+[tool.hatch.version]
+path = "gosent/core.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["gosent"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/gosent", "/tests", "/CHANGELOG.md"]
